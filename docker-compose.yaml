@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      # URL pública do n8n (ajuste conforme seu ambiente)
+      - WEBHOOK_URL=http://localhost:5678/
+
+      # Redis (opcional, mas recomendado p/ filas)
+      - N8N_REDIS_URL=redis://:redissenha@redis:6379
+
+      # Retenção de execuções
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=30
+
+      # Banco: MySQL
+      - DB_TYPE=mysql
+      - DB_MYSQL_HOST=mysql
+      - DB_MYSQL_PORT=3306
+      - DB_MYSQL_DATABASE=n8n_evaluations
+      - DB_MYSQL_USER=n8nuser
+      - DB_MYSQL_PASSWORD=n8npassword
+
+      # Ajustes opcionais:
+      # - N8N_LOG_LEVEL=debug
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - shared_audios:/audios
+    networks:
+      - evolution-net
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    environment:
+      - PMA_HOST=mysql
+      - PMA_PORT=3306
+      # Opcional: URL pública caso acesse por proxy reverso
+      # - PMA_ABSOLUTE_URI=http://localhost:8081/
+      # Ajustes úteis
+      - UPLOAD_LIMIT=256M
+      - MEMORY_LIMIT=512M
+      - MAX_EXECUTION_TIME=300
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql
+    networks:
+      - evolution-net
+    restart: unless-stopped
+    
+  web_uploader:
+    build:
+      context: .
+      dockerfile: web_uploader.Dockerfile
+    container_name: web_uploader
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/var/www/html
+      - shared_audios:/var/www/html/uploads
+    networks:
+      - evolution-net
+    restart: unless-stopped
+
+
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=supersecretrootpassword
+      - MYSQL_DATABASE=n8n_evaluations
+      - MYSQL_USER=n8nuser
+      - MYSQL_PASSWORD=n8npassword
+      # Opcional: timezone consistente
+      - TZ=America/Sao_Paulo
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Rodar .sql / .sh automaticamente na PRIMEIRA vez
+      - ./db_init:/docker-entrypoint-initdb.d
+      # (Opcional) configs extras: charset/collation
+      # - ./mysql_conf:/etc/mysql/conf.d
+    networks:
+      - evolution-net
+    # Opcional: evitar problemas de autenticação em clientes mais antigos
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    command: redis-server --requirepass redissenha
+    networks:
+      - evolution-net
+    restart: unless-stopped
+
+volumes:
+  n8n_data:
+  mysql_data:
+  shared_audios:
+
+networks:
+  evolution-net:
