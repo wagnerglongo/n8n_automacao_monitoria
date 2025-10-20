@@ -33,6 +33,8 @@ try {
     die("Erro ao conectar no banco. Verifique os logs para mais detalhes.");
 }
 
+$errors = []; // garante que exista mesmo se não houver POST
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $checklist = whitelist($_POST['checklist'] ?? '', ['ativos','crefisa','pagbank']);
     $operator_name   = trim($_POST['operator_name'] ?? '');
@@ -42,8 +44,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $monitor_name    = trim($_POST['monitor_name'] ?? '');
     $evaluated_at    = trim($_POST['evaluated_at'] ?? '');
     $monitor_notes   = trim($_POST['monitor_notes'] ?? '');
-
-    $errors = [];
 
     // 1) Campos obrigatórios
     if (!$checklist) { $errors[] = "Checklist inválido."; }
@@ -101,7 +101,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $errors[] = $upload_errors[$error_code] ?? "Ocorreu um erro desconhecido no upload.";
     }
 
-
     // 4) Se não há erros, salvar arquivo e registrar no banco
     if (empty($errors)) {
         $sanitized = preg_replace("/[^a-zA-Z0-9\._\-]/", "", $original_filename) ?: 'audio.' . $ext;
@@ -135,8 +134,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   monitor_notes = VALUES(monitor_notes),
                   updated_at = NOW()
             ";
-            // Removido contract_number da cláusula ON DUPLICATE KEY UPDATE para evitar que ele seja a chave de atualização.
-            // Assumindo que a chave única é (audio_file_path) ou outra combinação.
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
@@ -160,6 +157,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $message = "<div style='color: red;'><strong>Foram encontrados erros:</strong><ul><li>" . implode("</li><li>", array_map('htmlspecialchars', $errors)) . "</li></ul></div>";
     }
 }
+
+// --------- CONSULTA: últimas avaliações para o dropdown/tabela ---------
+$latestEvals = [];
+try {
+    $stmt = $pdo->query("
+        SELECT id, operator_name, contract_number, evaluated_at
+        FROM evaluations
+        ORDER BY id DESC
+        LIMIT 50
+    ");
+    $latestEvals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log("Erro ao listar avaliações: " . $e->getMessage());
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -168,14 +179,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <title>Upload de Áudio para Avaliação</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-      body { font-family: sans-serif; max-width: 720px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; background-color: #f9f9f9; }
+      body { font-family: sans-serif; max-width: 960px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; background-color: #f9f9f9; }
       h1 { text-align: center; color: #333; }
       form { display: grid; grid-template-columns: 1fr; gap: 16px; }
       label { font-weight: bold; margin-bottom: -8px; }
       input[type="file"], input[type="text"], input[type="date"], select, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
       textarea { resize: vertical; }
-      input[type="submit"] { padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
-      input[type="submit"]:hover { background-color: #0056b3; }
+      input[type="submit"], button { padding: 10px 14px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; }
+      input[type="submit"]:hover, button:hover { background-color: #0056b3; }
       #message-area { margin-top: 20px; padding: 15px; border-radius: 4px; border: 1px solid; }
       #message-area[data-type="success"] { background-color: #e6ffed; border-color: #b7e1cd; }
       #message-area[data-type="error"] { background-color: #ffebe6; border-color: #e1b7b7; }
@@ -183,6 +194,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           form { grid-template-columns: 1fr 1fr; gap: 14px 16px; }
           .row-span { grid-column: 1 / 3; }
       }
+      /* Seção PDF */
+      .pdf-section { margin-top: 32px; padding-top: 16px; border-top: 2px dashed #ddd; }
+      .inline { display: flex; gap: 10px; align-items: center; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
+      th { background: #f1f1f1; text-align: left; }
+      .right { text-align: right; }
   </style>
 </head>
 <body>
@@ -247,5 +265,65 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           <?php echo $message; ?>
       </div>
   <?php endif; ?>
+
+  <!-- Seção: Gerar PDF -->
+  <div class="pdf-section">
+    <h2>Gerar PDF de uma Avaliação</h2>
+
+    <!-- Opção 1: Dropdown + botão (abre em nova aba) -->
+    <form class="inline" action="pdf_generator.php" method="get" target="_blank">
+      <label for="eval_id"><strong>Selecione a avaliação:</strong></label>
+      <select id="eval_id" name="id" required>
+        <option value="" disabled selected>-- escolha uma avaliação --</option>
+        <?php foreach ($latestEvals as $ev):
+            $label = sprintf(
+              (int)$ev['id'],
+              htmlspecialchars((string)$ev['operator_name']),
+              htmlspecialchars((string)$ev['contract_number']),
+              $ev['evaluated_at'] ? date('d/m/Y', strtotime((string)$ev['evaluated_at'])) : '-'
+            );
+        ?>
+          <option value="<?php echo (int)$ev['id']; ?>">
+            <?php echo $label; ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <button type="submit">Gerar PDF</button>
+    </form>
+
+    <!-- Opção 2: Lista rápida das últimas avaliações com botão por linha -->
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Operador</th>
+          <th>Contrato</th>
+          <th>Data</th>
+          <th class="right">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($latestEvals)): ?>
+          <tr><td colspan="5">Nenhuma avaliação encontrada.</td></tr>
+        <?php else: ?>
+          <?php foreach ($latestEvals as $ev):
+              $evDate = $ev['evaluated_at'] ? date('d/m/Y', strtotime((string)$ev['evaluated_at'])) : '-';
+          ?>
+            <tr>
+              <td><?php echo (int)$ev['id']; ?></td>
+              <td><?php echo htmlspecialchars((string)$ev['operator_name']); ?></td>
+              <td><?php echo htmlspecialchars((string)$ev['contract_number']); ?></td>
+              <td><?php echo $evDate; ?></td>
+              <td class="right">
+                <a href="pdf_generator.php?id=<?php echo (int)$ev['id']; ?>" target="_blank">
+                  <button type="button">Gerar PDF</button>
+                </a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
 </body>
 </html>

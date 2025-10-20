@@ -1,0 +1,961 @@
+{
+  "name": "monitoria_avaliacao",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0d5ace9e-ebf8-4c1a-b634-e43279be6a4f",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "command": "ls -1 /audios"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "6d8dcd65-e9e0-4fc8-8286-8f7f754c0cc2",
+      "name": "Execute Command"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $json.fileName }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        624,
+        0
+      ],
+      "id": "2fa6c8a4-ca6c-41f6-9ac9-dad694b4fdba",
+      "name": "Loop Over Items",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assume que a entrada é um array de objetos, como o seu exemplo\n// [ { \"exitCode\": 0, \"stderr\": \"\", \"stdout\": \"file1.mp3\\nfile2.mp3\" } ]\n\nconst inputData = $input.all(); // Pega todos os itens de entrada\n\n// Vamos processar apenas o primeiro item, já que parece ser o que contém o stdout\nif (inputData.length > 0 && inputData[0].json && inputData[0].json.stdout) {\n    const stdoutString = inputData[0].json.stdout;\n\n    // Divide a string por '\\n' e filtra linhas vazias\n    const fileNames = stdoutString\n        .split('\\n')\n        .filter(name => name.trim() !== '');\n\n    // Cria um novo array de objetos, onde cada objeto representa um arquivo\n    // Isso é o formato ideal para o 'Loop Over Items' processar individualmente\n    const outputItems = fileNames.map(name => ({\n        fileName: name // Você pode ajustar o nome da chave aqui se preferir\n    }));\n\n    // Retorna o array de novos itens\n    return outputItems;\n}\n\n// Se não houver dados ou stdout, retorna um array vazio ou o input original\nreturn [];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "0f884544-097d-4199-ba76-cfbcec6f5b68",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "={{$('Read/Write Files from Disk').item.binary.data}}",
+        "options": {
+          "language": "pt"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1392,
+        176
+      ],
+      "id": "9c19e28a-c862-4820-a257-db055c03cf86",
+      "name": "Transcribe a recording",
+      "alwaysOutputData": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "AsiUb94voclItcUK",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.audio_file_path }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        176
+      ],
+      "id": "32b03683-c41b-49a9-b073-7f82b7ba79f8",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": {
+          "__rl": true,
+          "value": "asst_OeTO5jM7Nzr7xOgraRSTiMI7",
+          "mode": "list",
+          "cachedResultName": "monitoria_avaliacao"
+        },
+        "prompt": "define",
+        "text": "={{ $json.transcription }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1424,
+        384
+      ],
+      "id": "a297111c-28c1-4e04-beeb-61cad3983562",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "AsiUb94voclItcUK",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO evaluations (audio_file_path, transcription, evaluation_score, feedback)\nVALUES ('/audios/{{ $json.fileName }}', NULL, NULL, NULL)\nON DUPLICATE KEY UPDATE\n  -- NO-OP: não altera nada (evita repetir/atualizar)\n  updated_at = updated_at;\n\nSELECT id, audio_file_path, transcription, evaluation_score, feedback\nFROM evaluations\nWHERE audio_file_path = '/audios/{{ $json.fileName }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        784,
+        224
+      ],
+      "id": "af1a866e-9496-4d13-b796-9b9e4a4e21c2",
+      "name": "salvar fileName",
+      "credentials": {
+        "mySql": {
+          "id": "9jjyTAyHyr1Cj64S",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        544
+      ],
+      "id": "38399769-a53b-4418-b8ea-836d0c5b111b"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Alinha os itens pela posição no fluxo\nconst i = $itemIndex;\n\n// Pega os itens do nó de arquivos\nconst fileItems = $items('Read/Write Files from Disk');\n\n// Proteção caso não exista o item i\nconst fileItem = fileItems[i] || { json: {}, binary: {} };\n\n// Descobre a chave binária real (caso não seja \"data\")\nconst binKeys = fileItem.binary ? Object.keys(fileItem.binary) : [];\nconst binKey = binKeys[0] || 'data';\nconst bin = fileItem.binary?.[binKey] || {};\n\n// JSON de metadados do nó de arquivos (às vezes vem path aqui)\nconst fj = fileItem.json || {};\n\n// Texto da transcrição vindo do nó atual (Transcribe a recording)\nconst transcribedText =\n  $json?.text ??\n  $json?.transcription ??\n  $json?.result ??\n  '';\n\n// Monta o payload\nconst payload = {\n  // Se você tiver um id vindo antes no JSON do arquivo (raro), mantém; senão deixa nulo\n  id: fj.id ?? null,\n\n  // Caminho do arquivo (tenta várias fontes)\n  audio_file_path: fj.audio_file_path ?? bin.filePath ?? fj.path ?? null,\n\n  // Nome do arquivo (útil como plano B para WHERE se você não tiver path)\n  audio_file_name: bin.fileName ?? null,\n\n  // A transcrição propriamente dita\n  transcription_text: transcribedText,\n};\n\n// Retorna um único item com o json final\nreturn [{ json: payload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        176
+      ],
+      "id": "367b6470-22ea-470a-b96e-e36b2473a2a5",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lê todos os itens do nó anterior (provavelmente o Assistente de IA)\nconst inItems = $input.all();\nif (!inItems.length) {\n  return [{ json: { error: 'Sem itens no input do Code. Verifique o encadeamento com o Assistente de IA.' } }];\n}\n\n// Helper: primeiro valor definido/não-nulo entre várias chaves\nfunction pick(obj, keys) {\n  for (const k of keys) {\n    const v = obj?.[k];\n    if (v !== undefined && v !== null && v !== '') return v;\n  }\n  return null;\n}\n\n// Helper: basename a partir de um path (suporta / e \\)\nfunction basename(p) {\n  if (typeof p !== 'string') return null;\n  const parts = p.split(/[\\/]/);\n  const last = parts.pop();\n  return last && last.length ? last : null;\n}\n\n// 1) Itens do True branch do If1 (saída 0)\nconst ifTrueItems = $items('validados assistente'); // True é saída 0 no IF do n8n\n\nif (!ifTrueItems || !ifTrueItems.length) {\n  // Sem item do If1 True → devolve diagnóstico útil\n  const dbg = {\n    have_If1: !!$items('validados assistente'),\n    If1_true_len: ifTrueItems ? ifTrueItems.length : 0,\n  };\n  return [{ json: { error: 'Nenhum item encontrado no True branch do If1 (saída 0).', debug: dbg } }];\n}\n\n// Como você mencionou que é “(1 item)”, pegamos diretamente o único item.\n// Se um dia tiver >1, podemos alinhar por id/path, mas no seu caso atual isso resolve.\nconst fileItem = ifTrueItems.length === 1 ? ifTrueItems[0] : ifTrueItems[$itemIndex] || ifTrueItems[0];\n\n// Extrai JSON e Binary do If1 True\nconst fj = fileItem.json || {};\nconst binKeys = fileItem.binary ? Object.keys(fileItem.binary) : [];\nconst binKey = binKeys[0] || null;\nconst bin = binKey ? fileItem.binary[binKey] : null;\n\n// 2) Extrai dados do item atual (Assistente de IA) — pegue avaliação e transcrição\n// Observação: use os nomes que já apareceram no seu retorno real (evaluation_output, evaluation_thread_id, transcription)\nconst cur = inItems[0]?.json || {};\n\n// Transcrição (vem do pipeline de transcrição ou do próprio Assistente dependendo do seu fluxo)\nconst transcriptionText =\n  pick(cur, ['transcription', 'text', 'result', 'transcript']) ||\n  pick(fj, ['transcription', 'text']) ||\n  '';\n\n// Saída do Assistente de IA\nconst evaluationOutput =\n  pick(cur, ['evaluation_output', 'output', 'content', 'message', 'result']) || '';\n\nconst evaluationThreadId =\n  pick(cur, ['evaluation_thread_id', 'thread_id']) || null;\n\n// 3) Caminho e nome do arquivo\n// Tenta em ordem: JSON do If1 → binary do If1 → JSON do item atual → nulo\nconst audioFilePath =\n  pick(fj, ['audio_file_path', 'file_path', 'path']) ||\n  (bin ? bin.filePath : null) ||\n  pick(cur, ['audio_file_path', 'file_path', 'path']) ||\n  null;\n\n// file_name: tenta do binary primeiro, senão deriva do path via basename\nconst fileNameFromBinary = bin?.fileName || null;\nconst fileNameFromPath = basename(audioFilePath);\nconst fileName = fileNameFromBinary || fileNameFromPath || null;\n\n// 4) id (se vier do If1 JSON ou do item atual)\nconst id =\n  pick(fj, ['id']) ||\n  pick(cur, ['id']) ||\n  null;\n\n// 5) Monta payload final\nconst payload = {\n  id,\n  file_name: fileName,            // <- agora preenche mesmo sem binary (deriva do path)\n  audio_file_path: audioFilePath, // mantém o path original\n  transcription: transcriptionText,\n  evaluation_output: evaluationOutput,\n  evaluation_thread_id: evaluationThreadId,\n};\n\n// Retorna 1 item com o JSON final\nreturn [{ json: payload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        400
+      ],
+      "id": "554493ac-888b-4e10-a58b-e9b235e31596",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "__rl": true,
+          "value": "evaluations",
+          "mode": "list",
+          "cachedResultName": "evaluations"
+        },
+        "dataMode": "defineBelow",
+        "columnToMatchOn": "audio_file_path",
+        "valueToMatchOn": "={{ $json.audio_file_path }}",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "feedback",
+              "value": "={{ $json.evaluation_output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        2032,
+        416
+      ],
+      "id": "0fa7a258-af07-44f7-b5d2-6ee9afd279c0",
+      "name": "Update rows in a table1",
+      "credentials": {
+        "mySql": {
+          "id": "9jjyTAyHyr1Cj64S",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a179696c-9019-4f1a-b2f2-5034bf882f8c",
+              "leftValue": "={{ $json.avaliacao_ncg.ocorreu }}",
+              "rightValue": "Não",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1552,
+        -160
+      ],
+      "id": "d332538b-39dd-4130-819d-04161d28889f",
+      "name": "validaçao  ncg"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfunction safeParse(value) {\n  if (typeof value === 'string') {\n    try {\n      return JSON.parse(value);\n    } catch (e) {\n      throw new Error(`Falha ao parsear output como JSON: ${e.message}`);\n    }\n  }\n  return value;\n}\n\nconst out = items.map((item) => {\n  const id = item.json?.id;\n  const outputParsed = safeParse(item.json?.output);\n\n  // Se for objeto, mescla no nível raiz; se não, guarda em \"output\"\n  const enriched = (outputParsed && typeof outputParsed === 'object' && !Array.isArray(outputParsed))\n    ? { id, ...outputParsed }\n    : { id, output: outputParsed };\n\n  return { json: enriched };\n});\n\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        -160
+      ],
+      "id": "fefee061-514d-449c-ab72-9b0111ee20d7",
+      "name": "transformar em json"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "259568eb-5352-4ddc-b89d-ad2aadb51651",
+              "leftValue": "={{ $json.transcription }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        224
+      ],
+      "id": "c49f416e-ab16-4a2d-bd79-1df16cd74938",
+      "name": "validador  transcricao"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6f412879-61d1-4c66-b6bd-787835973b0f",
+              "leftValue": "={{ $json.feedback }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1232,
+        528
+      ],
+      "id": "7d6adae4-4195-4ac0-ae4d-2bfbaa61661d",
+      "name": "validados assistente"
+    },
+    {
+      "parameters": {
+        "content": "Trancrição e avaliação da ligação",
+        "height": 96,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        912,
+        400
+      ],
+      "typeVersion": 1,
+      "id": "1ca2d2b6-843a-469c-81bc-558e21f09810",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "cadastro do formulario\n",
+        "height": 96
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        480,
+        -208
+      ],
+      "typeVersion": 1,
+      "id": "7a2cb17a-4225-4935-880e-83d16f1728db",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, feedback AS output FROM evaluations WHERE evaluation_score IS NULL;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        -224
+      ],
+      "id": "7886c3cd-dab6-4148-b6e6-2ab74084be2f",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "mySql": {
+          "id": "9jjyTAyHyr1Cj64S",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $json.output }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1056,
+        -224
+      ],
+      "id": "0149118a-7ea9-457a-a3dc-944209eb725d",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me1",
+      "typeVersion": 1,
+      "position": [
+        2272,
+        -64
+      ],
+      "id": "50ee90a7-aa5a-448a-9fcf-cc14378b268f"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 1) Atualiza avaliação principal\nUPDATE evaluations\nSET\n  evaluation_score = {{ $json.pontuacao_final }},\n  processed_at = NOW()\nWHERE\n  id = {{ $json.id }};\n\n-- 2) Insere disciplinas (3 linhas)\nINSERT INTO evaluation_disciplines (evaluation_id, discipline_name, discipline_score)\nVALUES\n  ({{ $json.id }}, 'comunicacao_e_conducao', {{ $json.detalhes_avaliacao.comunicacao_e_conducao.pontuacao_disciplina }}),\n  ({{ $json.id }}, 'tecnicas_de_negociacao', {{ $json.detalhes_avaliacao.tecnicas_de_negociacao.pontuacao_disciplina }}),\n  ({{ $json.id }}, 'conhecimento_do_produto', {{ $json.detalhes_avaliacao.conhecimento_do_produto.pontuacao_disciplina }});\n\n\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        -208
+      ],
+      "id": "1c961522-0855-422a-8c41-5d9e7f7f0a83",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "mySql": {
+          "id": "9jjyTAyHyr1Cj64S",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "# A variável 'items' é fornecida automaticamente pelo n8n com os dados de entrada.\n# Lista para armazenar os itens que vamos retornar\noutput_items = []\n\ndef escape_sql(value):\n    if value is None:\n        return \"NULL\"\n    return f\"'{str(value).replace('\\'', '\\'\\'')}'\"\n\n# Iteramos sobre cada item que chega da entrada.\nfor item in items:\n    json_data = item.get('json', {})\n\n    if isinstance(json_data, list) and len(json_data) > 0:\n        evaluation_data = json_data[0]\n    else:\n        evaluation_data = json_data\n\n    evaluation_id = evaluation_data.get(\"id\")\n    if evaluation_id is None:\n        continue\n\n    detalhes_avaliacao = evaluation_data.get(\"detalhes_avaliacao\", {})\n\n    for discipline_name, disciplina_details in detalhes_avaliacao.items():\n        criterios = disciplina_details.get(\"criterios\", [])\n        \n        for criterio in criterios:\n            criterion_name = escape_sql(criterio.get(\"item\"))\n            weight = criterio.get(\"peso_maximo\", \"NULL\")\n            grade = criterio.get(\"nota\", \"NULL\")\n            score_contributed = criterio.get(\"pontuacao_contribuida\", \"NULL\")\n            complied = escape_sql(criterio.get(\"cumpriu\"))\n            justification = escape_sql(criterio.get(\"justificativa\"))\n            \n            # --- ALTERAÇÃO APLICADA AQUI ---\n            # Adicionada a cláusula ON DUPLICATE KEY UPDATE para inserir ou atualizar.\n            query = (\n                f\"INSERT INTO evaluation_criteria \"\n                f\"(evaluation_id, discipline_name, criterion_name, weight, grade, score_contributed, complied, justification) \"\n                f\"VALUES \"\n                f\"({evaluation_id}, '{discipline_name}', {criterion_name}, {weight}, {grade}, {score_contributed}, {complied}, {justification}) \"\n                f\"ON DUPLICATE KEY UPDATE \"\n                f\"discipline_name = VALUES(discipline_name), \"\n                f\"weight = VALUES(weight), \"\n                f\"grade = VALUES(grade), \"\n                f\"score_contributed = VALUES(score_contributed), \"\n                f\"complied = VALUES(complied), \"\n                f\"justification = VALUES(justification);\"\n            )\n            \n            # Para cada query, criamos um novo dicionário no formato que o n8n espera\n            # e o adicionamos à nossa lista de saída.\n            new_item = {\n                'json': {\n                    'query': query\n                }\n            }\n            output_items.append(new_item)\n\n# Retorna a lista de todos os novos itens que criamos.\n# O n8n vai transformar cada item dessa lista em um item separado no fluxo.\nreturn output_items"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        -368
+      ],
+      "id": "bbd55a37-9e3a-4601-85d0-c35347600815",
+      "name": "Code in Python (Beta)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.query }} ",
+        "options": {
+          "connectionTimeoutMillis": 30,
+          "connectionLimit": 30,
+          "queryBatching": "single",
+          "queryReplacement": "",
+          "largeNumbersOutput": "text",
+          "decimalNumbers": false,
+          "replaceEmptyStrings": false,
+          "detailedOutput": false
+        }
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        -368
+      ],
+      "id": "f4e7de9a-c8c3-4d7c-b5f5-46d5b6cf157f",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "mySql": {
+          "id": "9jjyTAyHyr1Cj64S",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": {
+          "__rl": true,
+          "value": "asst_OeTO5jM7Nzr7xOgraRSTiMI7",
+          "mode": "list",
+          "cachedResultName": "monitoria_avaliacao"
+        },
+        "prompt": "define",
+        "text": "={{ $json.transcription }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2256,
+        160
+      ],
+      "id": "c18d34ad-b5c2-444b-a36e-4b3d078ca123",
+      "name": "Message a model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "AsiUb94voclItcUK",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lê todos os itens do nó anterior (provavelmente o Assistente de IA)\nconst inItems = $input.all();\nif (!inItems.length) {\n  return [{ json: { error: 'Sem itens no input do Code. Verifique o encadeamento com o Assistente de IA.' } }];\n}\n\n// Helper: primeiro valor definido/não-nulo entre várias chaves\nfunction pick(obj, keys) {\n  for (const k of keys) {\n    const v = obj?.[k];\n    if (v !== undefined && v !== null && v !== '') return v;\n  }\n  return null;\n}\n\n// Helper: basename a partir de um path (suporta / e \\)\nfunction basename(p) {\n  if (typeof p !== 'string') return null;\n  const parts = p.split(/[\\/]/);\n  const last = parts.pop();\n  return last && last.length ? last : null;\n}\n\n// 1) Itens do True branch do If1 (saída 0)\nconst ifTrueItems = $items('validados assistente1'); // True é saída 0 no IF do n8n\n\nif (!ifTrueItems || !ifTrueItems.length) {\n  // Sem item do If1 True → devolve diagnóstico útil\n  const dbg = {\n    have_If1: !!$items('validados assistente1'),\n    If1_true_len: ifTrueItems ? ifTrueItems.length : 0,\n  };\n  return [{ json: { error: 'Nenhum item encontrado no True branch do If1 (saída 0).', debug: dbg } }];\n}\n\n// Como você mencionou que é “(1 item)”, pegamos diretamente o único item.\n// Se um dia tiver >1, podemos alinhar por id/path, mas no seu caso atual isso resolve.\nconst fileItem = ifTrueItems.length === 1 ? ifTrueItems[0] : ifTrueItems[$itemIndex] || ifTrueItems[0];\n\n// Extrai JSON e Binary do If1 True\nconst fj = fileItem.json || {};\nconst binKeys = fileItem.binary ? Object.keys(fileItem.binary) : [];\nconst binKey = binKeys[0] || null;\nconst bin = binKey ? fileItem.binary[binKey] : null;\n\n// 2) Extrai dados do item atual (Assistente de IA) — pegue avaliação e transcrição\n// Observação: use os nomes que já apareceram no seu retorno real (evaluation_output, evaluation_thread_id, transcription)\nconst cur = inItems[0]?.json || {};\n\n// Transcrição (vem do pipeline de transcrição ou do próprio Assistente dependendo do seu fluxo)\nconst transcriptionText =\n  pick(cur, ['transcription', 'text', 'result', 'transcript']) ||\n  pick(fj, ['transcription', 'text']) ||\n  '';\n\n// Saída do Assistente de IA\nconst evaluationOutput =\n  pick(cur, ['evaluation_output', 'output', 'content', 'message', 'result']) || '';\n\nconst evaluationThreadId =\n  pick(cur, ['evaluation_thread_id', 'thread_id']) || null;\n\n// 3) Caminho e nome do arquivo\n// Tenta em ordem: JSON do If1 → binary do If1 → JSON do item atual → nulo\nconst audioFilePath =\n  pick(fj, ['audio_file_path', 'file_path', 'path']) ||\n  (bin ? bin.filePath : null) ||\n  pick(cur, ['audio_file_path', 'file_path', 'path']) ||\n  null;\n\n// file_name: tenta do binary primeiro, senão deriva do path via basename\nconst fileNameFromBinary = bin?.fileName || null;\nconst fileNameFromPath = basename(audioFilePath);\nconst fileName = fileNameFromBinary || fileNameFromPath || null;\n\n// 4) id (se vier do If1 JSON ou do item atual)\nconst id =\n  pick(fj, ['id']) ||\n  pick(cur, ['id']) ||\n  null;\n\n// 5) Monta payload final\nconst payload = {\n  id,\n  file_name: fileName,            // <- agora preenche mesmo sem binary (deriva do path)\n  audio_file_path: audioFilePath, // mantém o path original\n  transcription: transcriptionText,\n  evaluation_output: evaluationOutput,\n  evaluation_thread_id: evaluationThreadId,\n};\n\n// Retorna 1 item com o JSON final\nreturn [{ json: payload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2544,
+        160
+      ],
+      "id": "c2b56f5b-7314-452b-b459-6ff7b144e9f4",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "__rl": true,
+          "value": "evaluations",
+          "mode": "list",
+          "cachedResultName": "evaluations"
+        },
+        "dataMode": "defineBelow",
+        "columnToMatchOn": "audio_file_path",
+        "valueToMatchOn": "={{ $json.audio_file_path }}",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "feedback",
+              "value": "={{ $json.evaluation_output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        2752,
+        288
+      ],
+      "id": "3fba3e45-9e84-406c-a89b-dfe97e5e5ff3",
+      "name": "Update rows in a table2",
+      "credentials": {
+        "mySql": {
+          "id": "9jjyTAyHyr1Cj64S",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6f412879-61d1-4c66-b6bd-787835973b0f",
+              "leftValue": "={{ $json.feedback }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1984,
+        176
+      ],
+      "id": "19a6a58f-284a-4452-8c9e-de2b6a91f9c6",
+      "name": "validados assistente1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE  evaluations SET transcription='{{ $json.transcription_text }}'  WHERE audio_file_path='/audios/{{ $json.audio_file_name }}';\n\nSELECT id, audio_file_path, transcription, evaluation_score, feedback\nFROM evaluations\nWHERE audio_file_path = '/audios/{{ $json.audio_file_name }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        1792,
+        176
+      ],
+      "id": "a5fa85e1-2b00-4e2e-a4c2-39b9f988a61f",
+      "name": "Execute a SQL query3",
+      "credentials": {
+        "mySql": {
+          "id": "9jjyTAyHyr1Cj64S",
+          "name": "MySQL account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Execute Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "salvar fileName",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "salvar fileName": {
+      "main": [
+        [
+          {
+            "node": "validador  transcricao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Update rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update rows in a table1": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "transformar em json": {
+      "main": [
+        [
+          {
+            "node": "validaçao  ncg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validador  transcricao": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "validados assistente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validados assistente": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validaçao  ncg": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Beta)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Replace Me1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "transformar em json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Replace Me1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Beta)": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query2": {
+      "main": [
+        [
+          {
+            "node": "Replace Me1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Update rows in a table2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update rows in a table2": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validados assistente1": {
+      "main": [
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query3": {
+      "main": [
+        [
+          {
+            "node": "validados assistente1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "abd02aa5-bb6d-45d6-bfc3-bd7855a14ec5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d5662a40f75b0d307aaaa1d2f8b839514fd133cb191fd646f9271f4e7228ac78"
+  },
+  "id": "i2i17H2cDui08C7R",
+  "tags": []
+}
