@@ -10,7 +10,15 @@ CREATE TABLE IF NOT EXISTS evaluations (
   feedback TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   processed_at DATETIME NULL, -- Nova coluna para controle. NULL = não processado.
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  operator_name varchar(120) DEFAULT NULL,
+  contract_number varchar(40) DEFAULT NULL,
+  phone_number varchar(30) DEFAULT NULL,
+  evaluation_type enum('acordo','sem_acordo') DEFAULT NULL,
+  monitor_name varchar(120) DEFAULT NULL,
+  evaluated_at date DEFAULT NULL,
+  monitor_notes text,
+  checklist varchar(15) DEFAULT NULL
 ) ENGINE=InnoDB;
 
 
